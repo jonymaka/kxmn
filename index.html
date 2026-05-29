@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>树影拼贴生成器 | Tree Silhouette Collage Generator</title>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.15);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --accent-color: #00d2ff;
+            --text-color: #f0f0f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+            color: var(--text-color);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* 毛玻璃风格通用类 */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* 左侧控制面板 */
+        #left-panel {
+            width: 320px;
+            margin: 20px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            font-weight: 300;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: #ccc;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: var(--accent-color);
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            border: none;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .btn-primary:hover {
+            background: #33e0ff;
+            transform: translateY(-2px);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-icon {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 20px;
+        }
+
+        .btn-icon .btn-text {
+            font-size: 10px;
+            margin-top: 4px;
+            font-weight: normal;
+        }
+
+        .btn-icon:hover {
+            transform: translateY(-2px);
+        }
+
+        /* 中间预览区 */
+        #preview-area {
+            flex: 1;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            position: relative;
+            padding: 20px 20px 160px 20px;
+            gap: 20px;
+            overflow-x: auto;
+        }
+
+        .preview-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            min-width: 200px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        .preview-section label {
+            font-size: 0.8rem;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        canvas {
+            width: 100%;
+            max-height: calc(100% - 30px);
+            object-fit: contain;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.2);
+        }
+
+        /* 底部素材栏 */
+        #bottom-assets {
+            position: fixed;
+            bottom: 20px;
+            left: 360px;
+            right: 20px;
+            height: 120px;
+            padding: 15px;
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            align-items: center;
+        }
+
+        #region-slots {
+            position: fixed;
+            bottom: 160px;
+            left: 360px;
+            right: 20px;
+            height: 80px;
+            padding: 10px 15px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            align-items: center;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .region-slot {
+            width: 60px;
+            height: 60px;
+            border: 2px dashed rgba(255, 255, 255, 0.6);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .region-slot:hover {
+            border-color: #ffffff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .region-slot.drag-over {
+            border-color: #00d2ff;
+            background: rgba(0, 210, 255, 0.2);
+        }
+
+        .region-slot.filled {
+            border-style: solid;
+            border-color: #00d2ff;
+        }
+
+        .region-slot .slot-number {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 2px;
+        }
+
+        .region-slot .slot-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .asset-item {
+            min-width: 90px;
+            height: 90px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid transparent;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .asset-item:hover {
+            transform: scale(1.05);
+            border-color: var(--accent-color);
+        }
+
+        .asset-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .asset-item:hover .remove-btn {
+            display: flex;
+        }
+
+        .remove-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(255, 59, 48, 0.9);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .asset-number {
+            position: absolute;
+            bottom: 4px;
+            left: 4px;
+            background: rgba(0, 210, 255, 0.9);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .upload-placeholder {
+            min-width: 90px;
+            height: 90px;
+            border: 2px dashed var(--glass-border);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.7rem;
+            cursor: pointer;
+            color: #888;
+        }
+
+        .upload-placeholder:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        /* 状态指示 */
+        #status-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 0.8rem;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 15px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 150px;
+            backdrop-filter: blur(5px);
+            z-index: 100;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: var(--accent-color);
+            transition: width 0.1s;
+        }
+
+        /* 背景选择器样式 */
+        .bg-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+        .bg-option {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .bg-option:hover {
+            transform: scale(1.2);
+        }
+
+        .bg-option.active {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+
+        .bg-option[data-style="transparent"] {
+            background-image: linear-gradient(45deg, #888 25%, transparent 25%), linear-gradient(-45deg, #888 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #888 75%), linear-gradient(-45deg, transparent 75%, #888 75%);
+            background-size: 10px 10px;
+            background-position: 0 0, 0 5px, 5px 5px, 5px 0;
+            background-color: #eee;
+        }
+
+        .bg-option[data-style="original"] {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>');
+            background-color: #444;
+            background-size: 18px;
+            background-repeat: no-repeat;
+        }
+
+        /* 混合模式选择器样式 */
+        .blend-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+        .blend-option {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .blend-option:hover {
+            transform: scale(1.2);
+        }
+
+        .blend-option.active {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+
+        .blend-option[data-mode="source-over"] {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .blend-option[data-mode="multiply"] {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .blend-option[data-mode="screen"] {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .blend-option[data-mode="overlay"] {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+
+        .blend-option[data-mode="soft-light"] {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 左侧控制面板 -->
+    <div id="left-panel" class="glass-panel">
+        <h1>树影拼贴生成器</h1>
+        
+        <div class="control-group">
+            <label>主图上传 (树木剪影)</label>
+            <label for="main-upload" class="btn">选择图片</label>
+            <input type="file" id="main-upload" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <label>识别灵敏度 (阈值)</label>
+            <input type="range" id="threshold-slider" min="0" max="255" value="128">
+            <div style="display:flex; justify-content:space-between; font-size: 10px; color:#888;">
+                <span>浅</span><span>深</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>最小区块大小 (像素)</label>
+            <input type="range" id="min-size-slider" min="10" max="1000" value="50">
+        </div>
+
+        <div class="control-group">
+            <label>混合模式 (Blend Mode)</label>
+            <div class="blend-picker" id="blend-picker">
+                <div class="blend-option active" data-mode="source-over" title="正常 (Normal)">N</div>
+                <div class="blend-option" data-mode="multiply" title="正片叠底 (Multiply)">M</div>
+                <div class="blend-option" data-mode="screen" title="滤色 (Screen)">S</div>
+                <div class="blend-option" data-mode="overlay" title="叠加 (Overlay)">O</div>
+                <div class="blend-option" data-mode="soft-light" title="柔光 (Soft Light)">L</div>
+            </div>
+            <input type="hidden" id="blend-mode" value="source-over">
+        </div>
+
+        <div class="control-group">
+            <label>艺术增强</label>
+            <div style="display:flex; gap:10px;">
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" id="enable-rotation" checked> 智能旋转
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" id="enable-shadow" checked> 立体阴影
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>填充模式</label>
+            <div style="display:flex; gap:10px;">
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="radio" name="fill-mode" id="fill-mode-random" value="random" checked> 随机填充
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="radio" name="fill-mode" id="fill-mode-manual" value="manual"> 手动拖拽
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>录制填充间隔 (0-5秒)</label>
+            <input type="number" id="fill-delay-input" min="0" max="5" step="0.01" value="0.3" style="width: 100%; padding: 5px;">
+        </div>
+
+        <div class="control-group">
+            <label>背景样式</label>
+            <div class="bg-picker" id="bg-picker">
+                <div class="bg-option active" data-style="original" title="原始主图"></div>
+                <div class="bg-option" data-style="transparent" title="透明"></div>
+                <div class="bg-option" data-style="color" data-color="#000000" style="background-color: #000000;" title="纯黑"></div>
+                <div class="bg-option" data-style="color" data-color="#ffffff" style="background-color: #ffffff;" title="纯白"></div>
+                <div class="bg-option" data-style="color" data-color="#2c3e50" style="background-color: #2c3e50;" title="午夜蓝"></div>
+                <div class="bg-option" data-style="color" data-color="#e74c3c" style="background-color: #e74c3c;" title="朱红"></div>
+                <div class="bg-option" data-style="color" data-color="#27ae60" style="background-color: #27ae60;" title="翡翠绿"></div>
+                <div class="bg-option" data-style="color" data-color="#f1c40f" style="background-color: #f1c40f;" title="向日葵黄"></div>
+                <div class="bg-option" data-style="color" data-color="#8e44ad" style="background-color: #8e44ad;" title="紫罗兰"></div>
+                <div class="bg-option" data-style="color" data-color="#34495e" style="background-color: #34495e;" title="湿沥青"></div>
+            </div>
+            <input type="hidden" id="bg-style" value="original">
+            <input type="hidden" id="bg-color" value="#000000">
+        </div>
+
+        <div style="flex:1"></div>
+
+        <div class="action-buttons">
+            <button id="generate-btn" class="btn btn-icon btn-primary" title="开始生成">
+                <span>🎨</span>
+                <span class="btn-text">生成</span>
+            </button>
+            <button id="download-btn" class="btn btn-icon" title="导出 4K 图片">
+                <span>💾</span>
+                <span class="btn-text">导出</span>
+            </button>
+            <button id="record-btn" class="btn btn-icon" title="录制 WebM 视频">
+                <span>🎥</span>
+                <span class="btn-text">录制</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 中间预览区 -->
+    <div id="preview-area">
+        <!-- 遮罩图预览区 -->
+        <div class="preview-section">
+            <label>遮罩预览</label>
+            <canvas id="mask-canvas"></canvas>
+        </div>
+
+        <!-- 多色区预览区 -->
+        <div class="preview-section">
+            <label>区块分割</label>
+            <canvas id="regions-canvas"></canvas>
+        </div>
+
+        <!-- 成果区预览区 -->
+        <div class="preview-section">
+            <label>成果展示</label>
+            <canvas id="result-canvas"></canvas>
+        </div>
+
+        <div id="status-info">
+            <span id="status-text">就绪</span>
+            <div class="progress-container">
+                <div id="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部素材栏 -->
+    <div id="region-slots" class="glass-panel">
+        <!-- 数字块将在此处动态生成 -->
+    </div>
+
+    <div id="bottom-assets" class="glass-panel">
+        <label for="asset-upload" class="upload-placeholder">
+            <span>+</span>
+            <span>添加素材</span>
+        </label>
+        <input type="file" id="asset-upload" accept="image/*" multiple>
+        <!-- 素材缩略图将插入此处 -->
+    </div>
+
+    <script>
+        // 核心变量
+        const maskCanvas = document.getElementById('mask-canvas');
+        const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+        const regionsCanvas = document.getElementById('regions-canvas');
+        const regionsCtx = regionsCanvas.getContext('2d', { willReadFrequently: true });
+        const resultCanvas = document.getElementById('result-canvas');
+        const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true });
+
+        // 初始化数字区显示状态（默认随机填充模式，隐藏数字区）
+        document.addEventListener('DOMContentLoaded', function() {
+            const regionSlotsContainer = document.getElementById('region-slots');
+            regionSlotsContainer.style.display = 'none';
+        });
+        
+        let mainImage = null;
+        let assetPool = [];
+        let regions = [];
+        let branchMask = null;
+        let filledRegions = {};
+        let manualRegions = [];
+        let savedFillOrder = []; // 保存填充顺序
+        
+        // 1. 初始化与主图上传
+        document.getElementById('main-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    mainImage = img;
+
+                    resizeCanvasToFitImage(img);
+                    updatePreview();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function resizeCanvasToFitImage(img) {
+            // 在3个并列布局下，最大宽度需要进一步限制
+            const maxWidth = (window.innerWidth - 380) / 3; 
+            const maxHeight = window.innerHeight - 240;
+            let width = img.width;
+            let height = img.height;
+            
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            const canvases = [maskCanvas, regionsCanvas, resultCanvas];
+            
+            canvases.forEach(cvs => {
+                cvs.width = width * ratio;
+                cvs.height = height * ratio;
+                cvs.dataset.originalWidth = img.width;
+                cvs.dataset.originalHeight = img.height;
+            });
+            
+            // 初始化遮罩 (使用其中一个的尺寸即可)
+            branchMask = new Uint8Array(maskCanvas.width * maskCanvas.height);
+        }
+
+        // 2. 图像处理与预览
+        function updatePreview() {
+            if (!mainImage) return;
+            
+            const bgStyle = document.getElementById('bg-style').value;
+            
+            // 遮罩预览区始终显示原图
+            maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+            maskCtx.drawImage(mainImage, 0, 0, maskCanvas.width, maskCanvas.height);
+            
+            // 成果展示区根据背景样式显示
+            resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+            if (bgStyle === 'original') {
+                resultCtx.drawImage(mainImage, 0, 0, resultCanvas.width, resultCanvas.height);
+            } else if (bgStyle === 'color') {
+                const bgColor = document.getElementById('bg-color').value;
+                resultCtx.fillStyle = bgColor;
+                resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+                resultCtx.drawImage(mainImage, 0, 0, resultCanvas.width, resultCanvas.height);
+            }
+            // transparent 模式不绘制背景
+            
+            const threshold = parseInt(document.getElementById('threshold-slider').value);
+            const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+            const data = imageData.data;
+            
+            // 更新遮罩
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                
+                if (gray < threshold) {
+                    branchMask[i/4] = 1;
+                    data[i] = 255;
+                    data[i+1] = data[i+1] * 0.3;
+                    data[i+2] = data[i+2] * 0.3;
+                    data[i+3] = 220;
+                } else {
+                    branchMask[i/4] = 0;
+                    data[i+3] = 80;
+                }
+            }
+            maskCtx.putImageData(imageData, 0, 0);
+            
+            drawRegionPreview();
+            drawManualModeHighlight();
+        }
+
+        function drawManualModeHighlight() {
+            const fillMode = document.querySelector('input[name="fill-mode"]:checked').value;
+            if (fillMode !== 'manual' || !mainImage) return;
+
+            // 只在手动模式下首次加载或主图变化时重新检测区域
+            if (!manualRegions || !manualRegions.length) {
+                const foundRegions = findConnectedRegions(true);
+                if (!foundRegions) return;
+                manualRegions = foundRegions;
+            }
+
+            resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+
+            const bgStyle = document.getElementById('bg-style').value;
+            if (bgStyle === 'original') {
+                resultCtx.drawImage(mainImage, 0, 0, resultCanvas.width, resultCanvas.height);
+            } else if (bgStyle === 'color') {
+                const bgColor = document.getElementById('bg-color').value;
+                resultCtx.fillStyle = bgColor;
+                resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+            }
+
+            Object.keys(filledRegions).forEach(regionIdx => {
+                const assetId = filledRegions[regionIdx];
+                const assetObj = assetPool.find(a => a.id === assetId);
+                if (assetObj && manualRegions[regionIdx]) {
+                    fillRegionWithAssetDirect(regionIdx, assetObj);
+                }
+            });
+
+            // 确定文本颜色：根据背景颜色自动调整
+            const bgColor = document.getElementById('bg-color').value;
+            const isLightBackground = isLightColor(bgColor);
+            const textColor = isLightBackground ? '#000' : '#fff';
+
+            manualRegions.forEach((region, idx) => {
+                const { minX, maxX, minY, maxY } = region.bounds;
+                const w = maxX - minX + 1;
+                const h = maxY - minY + 1;
+
+                const isFilled = filledRegions[idx] !== undefined;
+
+                // 边框颜色：黄色边框，增加对比度
+                resultCtx.strokeStyle = isFilled ? 'rgba(0, 255, 0, 0.9)' : 'rgba(255, 165, 0, 0.9)';
+                resultCtx.lineWidth = 2;
+                resultCtx.strokeRect(minX, minY, w, h);
+
+                if (!isFilled) {
+                    // 填充颜色：橙色半透明，提高与白色背景的对比度
+                    resultCtx.fillStyle = 'rgba(255, 165, 0, 0.3)';
+                    resultCtx.fillRect(minX, minY, w, h);
+                }
+
+                // 绘制数字：根据背景颜色自动调整文本颜色
+                resultCtx.fillStyle = textColor;
+                resultCtx.font = 'bold 12px Arial';
+                
+                // 添加文本阴影，提高可读性
+                resultCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                resultCtx.shadowBlur = 2;
+                resultCtx.shadowOffsetX = 1;
+                resultCtx.shadowOffsetY = 1;
+                
+                resultCtx.fillText((idx + 1).toString(), minX + 5, minY + 15);
+                
+                // 重置阴影
+                resultCtx.shadowColor = 'transparent';
+                resultCtx.shadowBlur = 0;
+                resultCtx.shadowOffsetX = 0;
+                resultCtx.shadowOffsetY = 0;
+            });
+
+            document.getElementById('status-text').innerText = '手动模式: ' + manualRegions.length + ' 个区域可填充';
+
+            // 生成数字块（只在区域变化时重新生成）
+            if (!window.lastRegionCount || window.lastRegionCount !== manualRegions.length) {
+                generateRegionSlots(manualRegions);
+                window.lastRegionCount = manualRegions.length;
+            }
+        }
+
+        // 辅助函数：判断颜色是否为浅色
+        function isLightColor(hexColor) {
+            // 移除 # 号
+            hexColor = hexColor.replace('#', '');
+            
+            // 转换为 RGB
+            const r = parseInt(hexColor.substring(0, 2), 16);
+            const g = parseInt(hexColor.substring(2, 4), 16);
+            const b = parseInt(hexColor.substring(4, 6), 16);
+            
+            // 计算亮度 (0-255)
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            
+            // 亮度大于 128 认为是浅色
+            return brightness > 128;
+        }
+
+        function fillRegionWithAssetDirect(regionIdx, assetObj) {
+            const region = manualRegions[regionIdx];
+            if (!region) return;
+
+            const { minX, maxX, minY, maxY } = region.bounds;
+            const w = maxX - minX + 1;
+            const h = maxY - minY + 1;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w;
+            tempCanvas.height = h;
+            const tCtx = tempCanvas.getContext('2d');
+
+            const mData = tCtx.createImageData(w, h);
+            for (let i = 0; i < region.pixels.length; i += 2) {
+                const px = region.pixels[i] - minX;
+                const py = region.pixels[i+1] - minY;
+                const pIdx = (py * w + px) * 4;
+                mData.data[pIdx+3] = 255;
+            }
+            tCtx.putImageData(mData, 0, 0);
+
+            tCtx.globalCompositeOperation = 'source-in';
+
+            const asset = assetObj.img;
+            const assetRatio = asset.width / asset.height;
+            const targetRatio = w / h;
+            let drawW, drawH, offsetX, offsetY;
+
+            if (assetRatio > targetRatio) {
+                drawH = h * 1.5;
+                drawW = drawH * assetRatio;
+            } else {
+                drawW = w * 1.5;
+                drawH = drawW / assetRatio;
+            }
+            offsetX = (w - drawW) / 2;
+            offsetY = (h - drawH) / 2;
+
+            tCtx.drawImage(asset, offsetX, offsetY, drawW, drawH);
+
+            // 应用用户选择的混合模式和阴影效果
+            const blendMode = document.getElementById('blend-mode').value;
+            const enableShadow = document.getElementById('enable-shadow').checked;
+            
+            resultCtx.save();
+            
+            // 阴影效果
+            if (enableShadow) {
+                resultCtx.shadowColor = 'rgba(0,0,0,0.5)';
+                resultCtx.shadowBlur = 10;
+                resultCtx.shadowOffsetX = 3;
+                resultCtx.shadowOffsetY = 3;
+            }
+            
+            resultCtx.globalCompositeOperation = blendMode;
+            resultCtx.drawImage(tempCanvas, minX, minY);
+            resultCtx.restore();
+        }
+
+        function drawRegionPreview() {
+            const foundRegions = findConnectedRegions(true);
+            if (!foundRegions) return;
+
+            // 绘制原始图片作为背景，但稍微变暗
+            regionsCtx.drawImage(mainImage, 0, 0, regionsCanvas.width, regionsCanvas.height);
+            regionsCtx.fillStyle = 'rgba(0,0,0,0.4)';
+            regionsCtx.fillRect(0, 0, regionsCanvas.width, regionsCanvas.height);
+
+            const imageData = regionsCtx.getImageData(0, 0, regionsCanvas.width, regionsCanvas.height);
+            const data = imageData.data;
+
+            foundRegions.forEach((region, rIdx) => {
+                const r = (rIdx * 137) % 255;
+                const g = (rIdx * 149) % 255;
+                const b = (rIdx * 163) % 255;
+
+                for (let i = 0; i < region.pixels.length; i += 2) {
+                    const px = region.pixels[i];
+                    const py = region.pixels[i+1];
+                    const pIdx = (py * regionsCanvas.width + px) * 4;
+                    data[pIdx] = r;
+                    data[pIdx+1] = g;
+                    data[pIdx+2] = b;
+                    data[pIdx+3] = 230;
+                }
+            });
+            regionsCtx.putImageData(imageData, 0, 0);
+            
+            document.getElementById('status-text').innerText = '识别到 ' + foundRegions.length + ' 个区块';
+        }
+
+        // 滑块交互
+        document.getElementById('threshold-slider').addEventListener('input', updatePreview);
+        document.getElementById('min-size-slider').addEventListener('input', updatePreview);
+        // fill-delay-input 只在录制时使用，不需要监听变化
+
+        document.querySelectorAll('input[name="fill-mode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                // 重置除主图和素材外的所有数据
+                filledRegions = {};
+                savedFillOrder = [];
+                
+                // 切换到手动模式时，清空区域检测，让系统重新检测
+                if (this.value === 'manual') {
+                    manualRegions = [];
+                }
+                
+                // 清空数字块中的图片，但保留数字块显示
+                const container = document.getElementById('region-slots');
+                const slots = container.querySelectorAll('.region-slot');
+                slots.forEach(slot => {
+                    slot.classList.remove('filled');
+                    const slotNumber = slot.querySelector('.slot-number');
+                    slot.innerHTML = `<div class="slot-number">${slotNumber.textContent}</div>`;
+                });
+                
+                updatePreview();
+                
+                // 根据填充模式显示/隐藏数字区
+                const fillMode = this.value;
+                const regionSlotsContainer = document.getElementById('region-slots');
+                if (fillMode === 'manual') {
+                    regionSlotsContainer.style.display = 'flex';
+                } else {
+                    regionSlotsContainer.style.display = 'none';
+                }
+            });
+        });
+
+        // 生成数字块
+        function generateRegionSlots(regions) {
+            const container = document.getElementById('region-slots');
+            container.innerHTML = '';
+
+            regions.forEach((region, idx) => {
+                const slot = document.createElement('div');
+                slot.className = 'region-slot';
+                slot.dataset.regionIndex = idx;
+                
+                const assetId = filledRegions[idx];
+                const assetObj = assetPool.find(a => a.id === assetId);
+                
+                if (assetObj) {
+                    slot.classList.add('filled');
+                    slot.innerHTML = `
+                        <div class="slot-number">${idx + 1}</div>
+                        <img src="${assetObj.img.src || assetObj.img.toDataURL()}" class="slot-preview">
+                    `;
+                } else {
+                    slot.innerHTML = `
+                        <div class="slot-number">${idx + 1}</div>
+                    `;
+                }
+
+                // 拖拽事件
+                slot.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    slot.classList.add('drag-over');
+                });
+
+                slot.addEventListener('dragleave', function() {
+                    slot.classList.remove('drag-over');
+                });
+
+                slot.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    slot.classList.remove('drag-over');
+
+                    const assetId = e.dataTransfer.getData('text/plain');
+                    const assetObj = assetPool.find(a => a.id === assetId);
+                    if (!assetObj) return;
+
+                    const regionIdx = parseInt(slot.dataset.regionIndex);
+                    filledRegions[regionIdx] = assetId;
+                    fillRegionWithAssetDirect(regionIdx, assetObj);
+
+                    // 更新数字块显示
+                    slot.classList.add('filled');
+                    slot.innerHTML = `
+                        <div class="slot-number">${regionIdx + 1}</div>
+                        <img src="${assetObj.img.src || assetObj.img.toDataURL()}" class="slot-preview">
+                    `;
+                });
+
+                container.appendChild(slot);
+            });
+        }
+
+        // 背景样式交互
+        document.getElementById('bg-picker').addEventListener('click', function(e) {
+            const option = e.target.closest('.bg-option');
+            if (!option) return;
+
+            document.querySelectorAll('.bg-option').forEach(opt => opt.classList.remove('active'));
+            option.classList.add('active');
+
+            document.getElementById('bg-style').value = option.dataset.style;
+            if (option.dataset.color) {
+                document.getElementById('bg-color').value = option.dataset.color;
+            }
+
+            updatePreview();
+        });
+
+        // 混合模式交互
+        document.getElementById('blend-picker').addEventListener('click', function(e) {
+            const option = e.target.closest('.blend-option');
+            if (!option) return;
+
+            document.querySelectorAll('.blend-option').forEach(opt => opt.classList.remove('active'));
+            option.classList.add('active');
+
+            document.getElementById('blend-mode').value = option.dataset.mode;
+        });
+
+        // 3. 素材池管理
+        // ... (keep current asset-upload logic) ...
+        document.getElementById('asset-upload').addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const scaledImg = scaleImage(img, 1024);
+                        const assetId = 'asset_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                        assetPool.push({ id: assetId, img: scaledImg });
+                        addAssetThumbnail(scaledImg, assetId);
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        function scaleImage(img, maxDim) {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            if (scale === 1) return img;
+            
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = img.width * scale;
+            offCanvas.height = img.height * scale;
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.drawImage(img, 0, 0, offCanvas.width, offCanvas.height);
+            return offCanvas;
+        }
+
+        function addAssetThumbnail(img, id) {
+            const container = document.getElementById('bottom-assets');
+            const div = document.createElement('div');
+            div.className = 'asset-item';
+            div.dataset.id = id;
+            const assetIndex = assetPool.length + 1;
+            div.draggable = true;
+            div.innerHTML = `
+                <img src="${img.src || img.toDataURL()}">
+                <div class="remove-btn" onclick="removeAsset('${id}', this)">✕</div>
+            `;
+
+            div.addEventListener('dragstart', function(e) {
+                e.dataTransfer.setData('text/plain', id);
+                e.dataTransfer.effectAllowed = 'copy';
+            });
+
+            container.insertBefore(div, container.lastElementChild.previousElementSibling);
+        }
+
+        function removeAsset(id, btn) {
+            assetPool = assetPool.filter(a => a.id !== id);
+            btn.parentElement.remove();
+        }
+
+        // 4. 核心算法：连通域检测 (CCL)
+        function findConnectedRegions(forPreview = false) {
+            if (!mainImage) return null;
+            if (!forPreview && assetPool.length === 0) return null;
+            const width = maskCanvas.width;
+            const height = maskCanvas.height;
+            const minSize = parseInt(document.getElementById('min-size-slider').value);
+            
+            // --- 动态形态学优化：根据滑动条强度对树枝进行“侵蚀” ---
+            // 目的：让细小的树枝断开，从而使相邻的背景孔洞联通成大块。
+            let effectiveMask = branchMask;
+            const mergeStrength = Math.floor(minSize / 150); // 强度系数：每增加150个像素阈值，侵蚀一圈
+            
+            if (mergeStrength > 0) {
+                effectiveMask = new Uint8Array(branchMask);
+                for (let iter = 0; iter < mergeStrength; iter++) {
+                    const nextMask = new Uint8Array(effectiveMask);
+                    for (let y = 1; y < height - 1; y++) {
+                        for (let x = 1; x < width - 1; x++) {
+                            const idx = y * width + x;
+                            if (effectiveMask[idx] === 1) { // 只有树枝部分参与侵蚀
+                                // 如果上下左右任何一个邻居是背景，则该点也变为背景（侵蚀树枝）
+                                if (effectiveMask[idx - 1] === 0 || 
+                                    effectiveMask[idx + 1] === 0 || 
+                                    effectiveMask[idx - width] === 0 || 
+                                    effectiveMask[idx + width] === 0) {
+                                    nextMask[idx] = 0;
+                                }
+                            }
+                        }
+                    }
+                    effectiveMask = nextMask;
+                }
+            }
+
+            const visited = new Uint8Array(width * height);
+            const foundRegions = [];
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+                    // 使用处理后的有效遮罩进行连通性检测
+                    if (effectiveMask[idx] === 0 && visited[idx] === 0) {
+                        const regionPixels = [];
+                        const stack = [[x, y]];
+                        visited[idx] = 1;
+                        
+                        let minX = x, maxX = x, minY = y, maxY = y;
+                        
+                        while (stack.length > 0) {
+                            const [cx, cy] = stack.pop();
+                            regionPixels.push(cx, cy);
+                            
+                            minX = Math.min(minX, cx); maxX = Math.max(maxX, cx);
+                            minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
+                            
+                            // 检查四邻域
+                            const neighbors = [[cx+1, cy], [cx-1, cy], [cx, cy+1], [cx, cy-1]];
+                            for (const [nx, ny] of neighbors) {
+                                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                                    const nIdx = ny * width + nx;
+                                    if (effectiveMask[nIdx] === 0 && visited[nIdx] === 0) {
+                                        visited[nIdx] = 1;
+                                        stack.push([nx, ny]);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 过滤掉面积过小的孤立区域
+                        if (regionPixels.length > minSize) {
+                            // 计算区域角度 (利用简单的图像矩)
+                            let angle = 0;
+                            if (document.getElementById('enable-rotation').checked) {
+                                angle = calculateRegionAngle(regionPixels);
+                            }
+                        
+                            foundRegions.push({
+                                pixels: new Int32Array(regionPixels),
+                                bounds: { minX, maxX, minY, maxY },
+                                angle: angle,
+                                assetIndex: forPreview ? 0 : Math.floor(Math.random() * assetPool.length),
+                                delay: (height - maxY) * 0.5 + Math.random() * 200 // 使用固定值，不依赖滑块
+                            });
+                        }
+                    }
+                }
+            }
+            return foundRegions.sort((a, b) => a.delay - b.delay);
+        }
+
+        function calculateRegionAngle(pixels) {
+            let m10 = 0, m01 = 0, m00 = pixels.length / 2;
+            let centerX = 0, centerY = 0;
+            
+            for (let i = 0; i < pixels.length; i += 2) {
+                centerX += pixels[i];
+                centerY += pixels[i+1];
+            }
+            centerX /= m00;
+            centerY /= m00;
+
+            let mu20 = 0, mu02 = 0, mu11 = 0;
+            for (let i = 0; i < pixels.length; i += 2) {
+                let dx = pixels[i] - centerX;
+                let dy = pixels[i+1] - centerY;
+                mu20 += dx * dx;
+                mu02 += dy * dy;
+                mu11 += dx * dy;
+            }
+            
+            // 计算长轴方向
+            return 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
+        }
+
+        // 5. 动画渲染逻辑
+        let isGenerating = false;
+        let animationStartTime = 0;
+        let stillStartTime = 0; // 新增：静止展示开始时间
+        let recorder = null;
+        let recordedChunks = [];
+
+        async function startManualGeneration(useSavedOrder = false) {
+            if (isGenerating) return;
+            
+            // 如果手动模式已有区域，使用已检测的区域，避免索引不匹配
+            let foundRegions = manualRegions;
+            if (!foundRegions || !foundRegions.length) {
+                foundRegions = findConnectedRegions();
+                if (!foundRegions) return;
+                manualRegions = foundRegions;
+            }
+
+            isGenerating = true;
+            animationStartTime = performance.now();
+            const statusText = document.getElementById('status-text');
+            const progressBar = document.getElementById('progress-bar');
+            statusText.innerText = '正在生成拼贴...';
+            
+            // 预渲染每个区块并保存填充顺序
+            if (!useSavedOrder || savedFillOrder.length === 0) {
+                savedFillOrder = [];
+                foundRegions.forEach((region, idx) => {
+                    let assetObj;
+                    if (filledRegions[idx]) {
+                        const assetId = filledRegions[idx];
+                        assetObj = assetPool.find(a => a.id === assetId);
+                    } else {
+                        const randomAssetIndex = Math.floor(Math.random() * assetPool.length);
+                        assetObj = assetPool[randomAssetIndex];
+                    }
+                    if (assetObj) {
+                        region.renderedCanvas = preRenderRegionWithAsset(region, assetObj);
+                        savedFillOrder.push({
+                            regionIdx: idx,
+                            assetId: assetObj.id
+                        });
+                    }
+                });
+            } else {
+                // 使用已保存的填充顺序
+                foundRegions.forEach((region, idx) => {
+                    const fillInfo = savedFillOrder.find(f => f.regionIdx === idx);
+                    if (fillInfo) {
+                        const assetObj = assetPool.find(a => a.id === fillInfo.assetId);
+                        if (assetObj) {
+                            region.renderedCanvas = preRenderRegionWithAsset(region, assetObj);
+                        }
+                    }
+                });
+            }
+            
+            if (isRecordingRequested) {
+                startRecording();
+            }
+            
+            const bgStyle = document.getElementById('bg-style').value;
+            const blendMode = document.getElementById('blend-mode').value;
+            const enableShadow = document.getElementById('enable-shadow').checked;
+            
+            function animate(now) {
+                const elapsed = now - animationStartTime;
+                
+                // 绘制背景
+                resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+                
+                if (bgStyle === 'original') {
+                    resultCtx.drawImage(mainImage, 0, 0, resultCanvas.width, resultCanvas.height);
+                } else if (bgStyle === 'color') {
+                    const bgColor = document.getElementById('bg-color').value;
+                    resultCtx.fillStyle = bgColor;
+                    resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+                }
+                
+                let completedCount = 0;
+                // 录制时使用输入框设置的间隔，生成时使用默认0.001秒
+                const intervalMs = isRecordingRequested ? 
+                    parseFloat(document.getElementById('fill-delay-input').value) * 1000 : 
+                    0.001 * 1000;
+                
+                foundRegions.forEach((region, idx) => {
+                    const delay = idx * intervalMs;
+                    if (elapsed > delay && region.renderedCanvas) {
+                        resultCtx.save();
+                        
+                        // 阴影效果
+                        if (enableShadow) {
+                            resultCtx.shadowColor = 'rgba(0,0,0,0.5)';
+                            resultCtx.shadowBlur = 10;
+                            resultCtx.shadowOffsetX = 3;
+                            resultCtx.shadowOffsetY = 3;
+                        }
+
+                        // 混合模式
+                        resultCtx.globalCompositeOperation = blendMode;
+                        
+                        // 淡入效果
+                        resultCtx.globalAlpha = Math.min(1, (elapsed - delay) / 1000);
+                        resultCtx.drawImage(region.renderedCanvas, region.bounds.minX, region.bounds.minY);
+                        resultCtx.restore();
+                        completedCount++;
+                    }
+                });
+
+                // 更新进度
+                const progress = (completedCount / foundRegions.length) * 100;
+                progressBar.style.width = `${progress}%`;
+
+                if (completedCount < foundRegions.length) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // 动画完成后的静止展示
+                    if (stillStartTime === 0) {
+                        stillStartTime = now;
+                        if (bgStyle === 'original') restoreEdges();
+                        statusText.innerText = isRecordingRequested ? '拼贴完成，正在封装视频...' : '生成完成！';
+                    }
+                    
+                    const stillElapsed = now - stillStartTime;
+                    if (stillElapsed < 5000) { // 5秒静止时长
+                        if (bgStyle === 'original') restoreEdges();
+                        requestAnimationFrame(animate);
+                    } else {
+                        isGenerating = false;
+                        stillStartTime = 0;
+                        statusText.innerText = '生成完成 (共 ' + foundRegions.length + ' 个区块)';
+                        if (recorder && recorder.state === "recording") {
+                            recorder.stop();
+                        }
+                    }
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        async function startGeneration(useSavedOrder = false) {
+            if (isGenerating) return;
+            
+            const foundRegions = findConnectedRegions();
+            if (!foundRegions) return;
+
+            // 预渲染每个区块的内容以提高动画性能
+            document.getElementById('status-text').innerText = '正在预处理素材...';
+            
+            if (!useSavedOrder || savedFillOrder.length === 0) {
+                savedFillOrder = [];
+                foundRegions.forEach((region, idx) => {
+                    region.renderedCanvas = preRenderRegion(region);
+                    const assetObj = assetPool[region.assetIndex];
+                    if (assetObj) {
+                        savedFillOrder.push({
+                            regionIdx: idx,
+                            assetId: assetObj.id
+                        });
+                    }
+                });
+            } else {
+                // 使用已保存的填充顺序
+                foundRegions.forEach((region, idx) => {
+                    const fillInfo = savedFillOrder.find(f => f.regionIdx === idx);
+                    if (fillInfo) {
+                        const assetIndex = assetPool.findIndex(a => a.id === fillInfo.assetId);
+                        if (assetIndex !== -1) {
+                            region.assetIndex = assetIndex;
+                            region.renderedCanvas = preRenderRegion(region);
+                        }
+                    }
+                });
+            }
+
+            isGenerating = true;
+            animationStartTime = performance.now();
+            stillStartTime = 0; // 重置
+            const statusText = document.getElementById('status-text');
+            const progressBar = document.getElementById('progress-bar');
+            statusText.innerText = '正在生成拼贴...';
+            
+            if (isRecordingRequested) {
+                startRecording();
+            }
+
+            function animate(now) {
+                const elapsed = now - animationStartTime;
+                const bgStyle = document.getElementById('bg-style').value;
+                const blendMode = document.getElementById('blend-mode').value;
+                const enableShadow = document.getElementById('enable-shadow').checked;
+                
+                // 绘制基础（根据选择的背景样式）
+                resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+                
+                if (bgStyle === 'original') {
+                    resultCtx.drawImage(mainImage, 0, 0, resultCanvas.width, resultCanvas.height);
+                } else if (bgStyle === 'color') {
+                    const bgColor = document.getElementById('bg-color').value;
+                    resultCtx.fillStyle = bgColor;
+                    resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+                }
+                
+                let completedCount = 0;
+                // 录制时使用输入框设置的间隔，生成时使用默认0.001秒
+                const intervalMs = isRecordingRequested ? 
+                    parseFloat(document.getElementById('fill-delay-input').value) * 1000 : 
+                    0.001 * 1000;
+                
+                foundRegions.forEach((region, idx) => {
+                    const delay = idx * intervalMs;
+                    if (elapsed > delay) {
+                        resultCtx.save();
+                        
+                        // 阴影效果
+                        if (enableShadow) {
+                            resultCtx.shadowColor = 'rgba(0,0,0,0.5)';
+                            resultCtx.shadowBlur = 10;
+                            resultCtx.shadowOffsetX = 3;
+                            resultCtx.shadowOffsetY = 3;
+                        }
+
+                        // 混合模式
+                        resultCtx.globalCompositeOperation = blendMode;
+                        
+                        // 延长淡入时间
+                        resultCtx.globalAlpha = Math.min(1, (elapsed - delay) / 1000);
+                        resultCtx.drawImage(region.renderedCanvas, region.bounds.minX, region.bounds.minY);
+                        resultCtx.restore();
+                        completedCount++;
+                    }
+                });
+
+                // 更新进度
+                const progress = (completedCount / foundRegions.length) * 100;
+                progressBar.style.width = `${progress}%`;
+
+                if (completedCount < foundRegions.length) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // 核心修复：即使动画结束，也要继续运行 requestAnimationFrame 以确保 MediaRecorder 接收到帧
+                    if (stillStartTime === 0) {
+                        stillStartTime = now;
+                        if (bgStyle === 'original') restoreEdges();
+                        statusText.innerText = isRecordingRequested ? '拼贴完成，正在封装视频...' : '生成完成！';
+                    }
+                    
+                    const stillElapsed = now - stillStartTime;
+                    if (stillElapsed < 5000) { // 5秒静止时长
+                        if (bgStyle === 'original') restoreEdges(); 
+                        requestAnimationFrame(animate);
+                    } else {
+                        isGenerating = false;
+                        statusText.innerText = '生成完成 (共 ' + foundRegions.length + ' 个区块)';
+                        if (recorder && recorder.state === "recording") {
+                            recorder.stop();
+                        }
+                    }
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function preRenderRegion(region) {
+            const assetObj = assetPool[region.assetIndex];
+            const asset = assetObj.img;
+            const { minX, maxX, minY, maxY } = region.bounds;
+            const w = maxX - minX + 1;
+            const h = maxY - minY + 1;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w;
+            tempCanvas.height = h;
+            const tCtx = tempCanvas.getContext('2d');
+
+            // 1. 在临时 Canvas 上绘制蒙版
+            const mData = tCtx.createImageData(w, h);
+            for (let i = 0; i < region.pixels.length; i += 2) {
+                const px = region.pixels[i] - minX;
+                const py = region.pixels[i+1] - minY;
+                const pIdx = (py * w + px) * 4;
+                mData.data[pIdx+3] = 255; // 只设置 Alpha 通道
+            }
+            tCtx.putImageData(mData, 0, 0);
+
+            // 2. 使用 source-in 混合模式灌入素材
+            tCtx.globalCompositeOperation = 'source-in';
+            
+            // 如果开启了智能旋转，旋转素材
+            if (region.angle !== 0) {
+                tCtx.save();
+                tCtx.translate(w / 2, h / 2);
+                tCtx.rotate(region.angle);
+                tCtx.translate(-w / 2, -h / 2);
+            }
+
+            const assetRatio = asset.width / asset.height;
+            const targetRatio = w / h;
+            let drawW, drawH, offsetX, offsetY;
+            
+            if (assetRatio > targetRatio) {
+                drawH = h * 1.5; // 稍微扩大以覆盖旋转后的空白
+                drawW = drawH * assetRatio;
+                offsetX = -(drawW - w) / 2;
+                offsetY = -(drawH - h) / 2;
+            } else {
+                drawW = w * 1.5;
+                drawH = drawW / assetRatio;
+                offsetX = -(drawW - w) / 2;
+                offsetY = -(drawH - h) / 2;
+            }
+            
+            tCtx.drawImage(asset, offsetX, offsetY, drawW, drawH);
+            if (region.angle !== 0) tCtx.restore();
+            
+            return tempCanvas;
+        }
+
+        // 为手动模式预渲染指定素材的区域
+        function preRenderRegionWithAsset(region, assetObj) {
+            const asset = assetObj.img;
+            const { minX, maxX, minY, maxY } = region.bounds;
+            const w = maxX - minX + 1;
+            const h = maxY - minY + 1;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w;
+            tempCanvas.height = h;
+            const tCtx = tempCanvas.getContext('2d');
+
+            // 1. 在临时 Canvas 上绘制蒙版
+            const mData = tCtx.createImageData(w, h);
+            for (let i = 0; i < region.pixels.length; i += 2) {
+                const px = region.pixels[i] - minX;
+                const py = region.pixels[i+1] - minY;
+                const pIdx = (py * w + px) * 4;
+                mData.data[pIdx+3] = 255; // 只设置 Alpha 通道
+            }
+            tCtx.putImageData(mData, 0, 0);
+
+            // 2. 使用 source-in 混合模式灌入素材
+            tCtx.globalCompositeOperation = 'source-in';
+
+            const assetRatio = asset.width / asset.height;
+            const targetRatio = w / h;
+            let drawW, drawH, offsetX, offsetY;
+            
+            if (assetRatio > targetRatio) {
+                drawH = h * 1.5; // 稍微扩大以覆盖旋转后的空白
+                drawW = drawH * assetRatio;
+                offsetX = -(drawW - w) / 2;
+                offsetY = -(drawH - h) / 2;
+            } else {
+                drawW = w * 1.5;
+                drawH = drawW / assetRatio;
+                offsetX = -(drawW - w) / 2;
+                offsetY = -(drawH - h) / 2;
+            }
+            
+            tCtx.drawImage(asset, offsetX, offsetY, drawW, drawH);
+            
+            return tempCanvas;
+        }
+
+        function restoreEdges() {
+            const imageData = resultCtx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
+            const data = imageData.data;
+            
+            // 获取原始图像数据
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = resultCanvas.width;
+            offCanvas.height = resultCanvas.height;
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.drawImage(mainImage, 0, 0, resultCanvas.width, resultCanvas.height);
+            const originalData = offCtx.getImageData(0, 0, resultCanvas.width, resultCanvas.height).data;
+            
+            for (let i = 0; i < branchMask.length; i++) {
+                if (branchMask[i] === 1) {
+                    const idx = i * 4;
+                    data[idx] = originalData[idx];
+                    data[idx+1] = originalData[idx+1];
+                    data[idx+2] = originalData[idx+2];
+                    data[idx+3] = originalData[idx+3];
+                }
+            }
+            resultCtx.putImageData(imageData, 0, 0);
+        }
+
+        // 6. 导出与录制功能
+        let isRecordingRequested = false;
+
+        document.getElementById('generate-btn').addEventListener('click', () => {
+            if (!mainImage || assetPool.length === 0) {
+                alert('请先上传主图和素材！');
+                return;
+            }
+            isRecordingRequested = false;
+            
+            const fillMode = document.querySelector('input[name="fill-mode"]:checked').value;
+            if (fillMode === 'manual') {
+                startManualGeneration(false); // 重新生成填充顺序
+            } else {
+                startGeneration(false); // 重新生成填充顺序
+            }
+        });
+
+        document.getElementById('record-btn').addEventListener('click', () => {
+            if (!mainImage || assetPool.length === 0) {
+                alert('请先上传主图和素材！');
+                return;
+            }
+            isRecordingRequested = true;
+            
+            const fillMode = document.querySelector('input[name="fill-mode"]:checked').value;
+            if (fillMode === 'manual') {
+                startManualGeneration(true); // 使用已保存的填充顺序
+            } else {
+                startGeneration(true); // 使用已保存的填充顺序
+            }
+        });
+
+        function startRecording() {
+            recordedChunks = [];
+            // 尝试支持的 MIME 类型
+            const mimeTypes = [
+                'video/mp4;codecs=h264', // 部分 Safari 支持
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm'
+            ];
+            
+            let selectedMimeType = '';
+            for (const type of mimeTypes) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    selectedMimeType = type;
+                    break;
+                }
+            }
+
+            const stream = resultCanvas.captureStream(30); // 30 FPS
+            recorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
+            
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                const extension = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
+                const blob = new Blob(recordedChunks, { type: selectedMimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tree-collage-${Date.now()}.${extension}`;
+                a.click();
+            };
+
+            recorder.start();
+        }
+
+        document.getElementById('download-btn').addEventListener('click', () => {
+            if (isGenerating) return;
+            const link = document.createElement('a');
+            link.download = `tree-collage-${Date.now()}.png`;
+            link.href = resultCanvas.toDataURL('image/png', 1.0);
+            link.click();
+        });
+
+        function removeAsset(id, btn) {
+            assetPool = assetPool.filter(a => a.id !== id);
+            btn.parentElement.remove();
+        }
+
+    </script>
+</body>
+</html>
